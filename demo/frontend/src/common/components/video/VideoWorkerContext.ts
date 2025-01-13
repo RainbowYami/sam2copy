@@ -528,8 +528,9 @@ export default class VideoWorkerContext {
     this.sendResponse('loadstart');
 
     const fileStream = streamFile(src, {
-      credentials: 'same-origin',
+      credentials: 'include',
       cache: 'no-store',
+      mode: 'cors'
     });
 
     let renderedFirstFrame = false;

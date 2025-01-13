@@ -5,7 +5,13 @@ services:
       context: ./demo/frontend
       dockerfile: frontend.Dockerfile
     ports:
-      - 7262:80
+      - 7262:5173  # Vite dev server port
+    volumes:
+      - ./demo/frontend:/app
+      - /app/node_modules
+    command: yarn dev --host
+    environment:
+      - NODE_ENV=development
 
   backend:
     image: sam2/backend

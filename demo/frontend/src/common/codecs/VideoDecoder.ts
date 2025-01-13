@@ -23,7 +23,12 @@ import {
   MP4Sample,
   MP4VideoTrack,
 } from 'mp4box';
-import {isAndroid, isChrome, isEdge, isWindows} from 'react-device-detect';
+// Simple browser detection
+const ua = navigator.userAgent;
+const isChrome = /Chrome/.test(ua);
+const isEdge = /Edg/.test(ua);
+const isWindows = /Windows/.test(ua);
+const isAndroid = /Android/.test(ua);
 
 export type ImageFrame = {
   bitmap: VideoFrame;
@@ -126,20 +131,20 @@ function decodeInternal(
           const sample = globalSamples[frame_n];
           if (sample != null) {
             const duration = (sample.duration * 1_000_000) / sample.timescale;
-            imageFrames.push({
+            // Store frames in order by their frame number
+            imageFrames[frame_n] = {
               bitmap: inputFrame,
               timestamp: inputFrame.timestamp,
               duration,
-            });
-            // Sort frames in order of timestamp. This is needed because Safari
-            // can return decoded frames out of order.
-            imageFrames.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
-            // Update progress on first frame and then every 40th frame
-            if (onProgress != null && frame_n % 100 === 0) {
+            };
+            // Update progress very frequently to show more immediate feedback
+            if (onProgress != null && frame_n % 2 === 0) {
+              // Filter out any undefined frames (not yet received)
+              const validFrames = imageFrames.filter(frame => frame !== undefined);
               onProgress({
                 width: saveTrack.track_width,
                 height: saveTrack.track_height,
-                frames: imageFrames,
+                frames: validFrames,
                 numFrames: saveTrack.nb_samples,
                 fps:
                   (saveTrack.nb_samples / saveTrack.duration) *
@@ -153,6 +158,7 @@ function decodeInternal(
             // Sort frames in order of timestamp. This is needed because Safari
             // can return decoded frames out of order.
             imageFrames.sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+            decoder.close();
             resolve({
               width: saveTrack.track_width,
               height: saveTrack.track_height,
@@ -220,19 +226,24 @@ function decodeInternal(
       _user: unknown,
       samples: MP4Sample[],
     ) => {
-      for (const sample of samples) {
-        globalSamples.push(sample);
-        decoder.decode(
-          new EncodedVideoChunk({
+      try {
+        // Process samples sequentially to maintain frame order
+        for (const sample of samples) {
+          globalSamples.push(sample);
+          const chunk = new EncodedVideoChunk({
             type: sample.is_sync ? 'key' : 'delta',
             timestamp: (sample.cts * 1_000_000) / sample.timescale,
             duration: (sample.duration * 1_000_000) / sample.timescale,
             data: sample.data,
-          }),
-        );
+          });
+          decoder.decode(chunk);
+          // Add a longer delay between frames to prevent decoder overload
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        await decoder.flush();
+      } catch (error) {
+        reject(error);
       }
-      await decoder.flush();
-      decoder.close();
     };
 
     onReady(mp4File);
@@ -269,14 +280,37 @@ export function decodeStream(
     'stream',
     async (mp4File: MP4File) => {
       let part = await fileStream.next();
+      let pendingChunks: { start: number; buffer: MP4ArrayBuffer }[] = [];
+      let nextExpectedStart = 0;
+      
+      // Process chunks as they arrive
       while (part.done === false) {
         const result = part.value.data.buffer as MP4ArrayBuffer;
         if (result != null) {
-          result.fileStart = part.value.range.start;
-          mp4File.appendBuffer(result);
+          const start = part.value.range.start;
+          pendingChunks.push({ start, buffer: result });
+          pendingChunks.sort((a, b) => a.start - b.start);
+
+          // Process any chunks that are ready (in sequence)
+          while (pendingChunks.length > 0 && pendingChunks[0].start === nextExpectedStart) {
+            const chunk = pendingChunks.shift()!;
+            chunk.buffer.fileStart = chunk.start;
+            mp4File.appendBuffer(chunk.buffer);
+            mp4File.flush();
+            nextExpectedStart = chunk.start + chunk.buffer.byteLength;
+            // Add longer delay to prevent overwhelming the decoder
+            await new Promise(resolve => setTimeout(resolve, 20));
+          }
         }
-        mp4File.flush();
         part = await fileStream.next();
+      }
+
+      // Process any remaining chunks
+      for (const chunk of pendingChunks) {
+        chunk.buffer.fileStart = chunk.start;
+        mp4File.appendBuffer(chunk.buffer);
+        mp4File.flush();
+        await new Promise(resolve => setTimeout(resolve, 20));
       }
     },
     onProgress,

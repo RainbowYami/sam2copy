@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import os
 from typing import Any, Generator
 
 from app_conf import (
@@ -40,16 +41,77 @@ def healthy() -> Response:
     return make_response("OK", 200)
 
 
-@app.route(f"/{GALLERY_PREFIX}/<path:path>", methods=["GET"])
-def send_gallery_video(path: str) -> Response:
+def send_file_partial(path: str) -> Response:
+    range_header = request.headers.get('Range', None)
     try:
-        return send_from_directory(
-            GALLERY_PATH,
-            path,
-        )
+        with open(path, 'rb') as f:
+            size = os.path.getsize(path)
+            if range_header:
+                try:
+                    bytes_range = range_header.replace('bytes=', '').split('-')
+                    if bytes_range[0]:
+                        # Handle "bytes=1000-" or "bytes=1000-2000" format
+                        start = max(int(bytes_range[0]), 0)
+                        if len(bytes_range) > 1 and bytes_range[1]:
+                            end = min(int(bytes_range[1]), size - 1)
+                        else:
+                            # If no end is specified, return up to 1MB from the start position
+                            end = min(start + 1024 * 1024 - 1, size - 1)
+                    else:
+                        # Handle "bytes=-500" format (last N bytes)
+                        start = max(size - int(bytes_range[1]), 0) if bytes_range[1] else 0
+                        end = size - 1
+                except (ValueError, IndexError):
+                    # If range header is malformed, return the full file
+                    return Response(
+                        f.read(),
+                        200,
+                        mimetype='video/mp4',
+                        content_type='video/mp4',
+                        direct_passthrough=True
+                    )
+                if start >= size:
+                    return Response(status=416)
+                # Use a smaller chunk size (1MB) to match decoder timing
+                chunk_size = min(end - start + 1, 1024 * 1024)
+                if chunk_size <= 0:
+                    return Response(status=416)
+                f.seek(start)
+                actual_end = start + chunk_size - 1
+                data = f.read(chunk_size)
+                rv = Response(
+                    data,
+                    206,
+                    mimetype='video/mp4',
+                    content_type='video/mp4',
+                    direct_passthrough=True
+                )
+                rv.headers.add('Content-Range', f'bytes {start}-{actual_end}/{size}')
+                rv.headers.add('Accept-Ranges', 'bytes')
+                rv.headers.add('Content-Length', str(chunk_size))
+                return rv
+            # When no range is requested, return the full file with proper headers
+            data = f.read()
+            rv = Response(
+                data,
+                200,
+                mimetype='video/mp4',
+                content_type='video/mp4',
+                direct_passthrough=True
+            )
+            rv.headers.add('Accept-Ranges', 'bytes')
+            rv.headers.add('Content-Length', str(size))
+            return rv
     except:
         raise ValueError("resource not found")
 
+@app.route(f"/{GALLERY_PREFIX}/<path:path>", methods=["GET"])
+def send_gallery_video(path: str) -> Response:
+    try:
+        full_path = os.path.join(GALLERY_PATH, path)
+        return send_file_partial(full_path)
+    except:
+        raise ValueError("resource not found")
 
 @app.route(f"/{POSTERS_PREFIX}/<path:path>", methods=["GET"])
 def send_poster_image(path: str) -> Response:
@@ -61,14 +123,11 @@ def send_poster_image(path: str) -> Response:
     except:
         raise ValueError("resource not found")
 
-
 @app.route(f"/{UPLOADS_PREFIX}/<path:path>", methods=["GET"])
 def send_uploaded_video(path: str):
     try:
-        return send_from_directory(
-            UPLOADS_PATH,
-            path,
-        )
+        full_path = os.path.join(UPLOADS_PATH, path)
+        return send_file_partial(full_path)
     except:
         raise ValueError("resource not found")
 

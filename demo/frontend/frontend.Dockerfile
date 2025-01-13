@@ -1,5 +1,4 @@
-# Stage 1: Build Stage
-FROM node:22.9.0 AS build
+FROM node:22.9.0
 
 WORKDIR /app
 
@@ -7,20 +6,13 @@ WORKDIR /app
 COPY package.json ./
 COPY yarn.lock ./
 
-# Install dependencies
-RUN yarn install --frozen-lockfile
+# Install dependencies including devDependencies
+RUN yarn install
 
-# Copy source code
-COPY . .
+# The source code will be mounted as a volume in docker-compose.yaml
+# This allows for hot-reloading and debugging TypeScript directly
 
-# Build the application
-RUN yarn build
+EXPOSE 5173
 
-# Stage 2: Production Stage
-FROM nginx:latest
-
-# Copy built files from the build stage to the production image
-COPY --from=build /app/dist /usr/share/nginx/html
-
-# Container startup command for the web server (nginx in this case)
-CMD ["nginx", "-g", "daemon off;"]
+# Start Vite dev server with host and port explicitly set
+CMD ["yarn", "vite", "--host", "0.0.0.0", "--port", "5173"]

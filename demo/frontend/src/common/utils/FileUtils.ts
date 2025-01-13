@@ -68,6 +68,8 @@ export async function* streamFile(url: string, init?: RequestInit): FileStream {
       const chunks: Uint8Array[] = [];
       let start = 0;
       let end = 0;
+      let bufferedSize = 0;
+      const maxBufferSize = 5 * 1024 * 1024; // 5MB buffer limit
 
       const reader = response.body.getReader();
       try {
@@ -77,8 +79,16 @@ export async function* streamFile(url: string, init?: RequestInit): FileStream {
             break;
           }
 
+          chunks.push(value);
           start = end;
           end += value.length;
+          bufferedSize += value.length;
+
+          // If buffer is getting too large, remove older chunks
+          while (bufferedSize > maxBufferSize && chunks.length > 1) {
+            const removed = chunks.shift()!;
+            bufferedSize -= removed.length;
+          }
 
           yield {
             data: value,
