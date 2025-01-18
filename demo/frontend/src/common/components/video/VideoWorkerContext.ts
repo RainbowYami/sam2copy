@@ -38,7 +38,6 @@ import CreateFilmstripError from '@/graphql/errors/CreateFilmstripError';
 import DrawFrameError from '@/graphql/errors/DrawFrameError';
 import WebGLContextError from '@/graphql/errors/WebGLContextError';
 import {RLEObject} from '@/jscocotools/mask';
-import invariant from 'invariant';
 import {CanvasForm} from 'pts';
 import {serializeError} from 'serialize-error';
 import {
@@ -343,10 +342,14 @@ export default class VideoWorkerContext {
         index === EffectIndex.BACKGROUND
           ? this._canvasBackground
           : this._canvasHighlights;
-      invariant(offCanvas != null, 'need OffscreenCanvas to render effects');
+      if (!offCanvas) {
+        throw new Error('need canvas to render effects');
+      }
       const webglContext =
         index === EffectIndex.BACKGROUND ? this._glBackground : this._glObjects;
-      invariant(webglContext != null, 'need WebGL context to render effects');
+      if (!webglContext) {
+        throw new Error('need WebGL context to render effects');
+      }
 
       // Initialize the effect. This can be used by effects to prepare
       // resources needed for rendering. If the video wasn't decoded yet, the
@@ -383,19 +386,20 @@ export default class VideoWorkerContext {
 
   async encode() {
     const decodedVideo = this._decodedVideo;
-    invariant(
-      decodedVideo !== null,
-      'cannot encode video because there is no decoded video available',
-    );
+    if (!decodedVideo) {
+      throw new Error('cannot encode video because there is no decoded video available');
+    }
 
     const canvas = new OffscreenCanvas(this.width, this.height);
     const ctx = canvas.getContext('2d', {willReadFrequently: true});
-    invariant(
-      ctx !== null,
-      'cannot encode video because failed to construct offscreen canvas context',
-    );
+    if (!ctx) {
+      throw new Error('cannot encode video because failed to construct offscreen canvas context');
+    }
 
     const form = new CanvasForm(ctx);
+
+    // fps値が存在することを確認
+    const fps = decodedVideo.fps ?? 30; // デフォルトは30fps
 
     const file = await encodeVideo(
       this.width,
@@ -407,6 +411,7 @@ export default class VideoWorkerContext {
           progress,
         });
       },
+      fps
     );
     this.sendResponse<EncodingCompletedResponse>(
       'encodingCompleted',
@@ -428,14 +433,19 @@ export default class VideoWorkerContext {
       await this._drawFrameImpl(form, frameIndex, true);
 
       const frame = frames[frameIndex];
+      // 正確なタイムスタンプと期間を設定
+      const timestamp = frameIndex * (1_000_000 / decodedVideo.fps); // マイクロ秒単位
+      const duration = 1_000_000 / decodedVideo.fps; // マイクロ秒単位
+
       const videoFrame = new VideoFrame(canvas, {
-        timestamp: frame.bitmap.timestamp,
+        timestamp: timestamp,
+        duration: duration,
       });
 
       yield {
         bitmap: videoFrame,
-        timestamp: frame.timestamp,
-        duration: frame.duration,
+        timestamp: timestamp,
+        duration: duration,
       };
 
       videoFrame.close();
@@ -523,7 +533,9 @@ export default class VideoWorkerContext {
 
   private async _decodeVideo(src: string): Promise<void> {
     const canvas = this._canvas;
-    invariant(canvas != null, 'need canvas to render decoded video');
+    if (!canvas) {
+      throw new Error('need canvas to render decoded video');
+    }
 
     this.sendResponse('loadstart');
 
@@ -550,13 +562,14 @@ export default class VideoWorkerContext {
             i === EffectIndex.BACKGROUND
               ? this._canvasBackground
               : this._canvasHighlights;
-          invariant(offCanvas != null, 'need canvas to render effects');
+          if (!offCanvas) {
+            throw new Error('need canvas to render effects');
+          }
           const webglContext =
             i === EffectIndex.BACKGROUND ? this._glBackground : this._glObjects;
-          invariant(
-            webglContext != null,
-            'need WebGL context to render effects',
-          );
+          if (!webglContext) {
+            throw new Error('need WebGL context to render effects');
+          }
           await effect.setup({
             width,
             height,

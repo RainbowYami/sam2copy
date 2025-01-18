@@ -158,14 +158,17 @@ export class MinimalEncoderManager {
   private outputFile: any;
   private trackID: number | null = null;
   private isFlushing = false;
+  private fps: number;
 
   constructor(
     private width: number,
     private height: number,
-    private onError: (err: any) => void
+    private onError: (err: any) => void,
+    fps?: number
   ) {
-    log('MinimalEncoderManager constructor called', { width, height });
+    log('MinimalEncoderManager constructor called', { width, height, fps });
     this.outputFile = createFile();
+    this.fps = fps || 30; // デフォルトは30fps
   }
 
   private createTrackIfNeeded(decoderConfig?: VideoDecoderConfig): void {
@@ -205,7 +208,7 @@ export class MinimalEncoderManager {
       width: this.width,
       height: this.height,
       bitrate: 14_000_000,
-      framerate: 24,
+      framerate: this.fps,
       alpha: 'discard',
       bitrateMode: 'variable',
       latencyMode: 'realtime',  // Safariで必要
@@ -246,9 +249,16 @@ export class MinimalEncoderManager {
       chunk.copyTo(data);
 
       const isKeyFrame = chunk.type === 'key';
+      
+      // マイクロ秒からタイムスケール90kHzに変換
+      const duration = chunk.duration ? Math.round((chunk.duration * 90000) / 1_000_000) : 0;
+      const timestamp = Math.round((chunk.timestamp * 90000) / 1_000_000);
+      
       this.outputFile.addSample(this.trackID!, data, {
-        duration: chunk.duration ?? 0,
+        duration: duration,
         is_sync: isKeyFrame,
+        dts: timestamp,
+        cts: timestamp,
       });
 
       log('Wrote sample', {
@@ -347,7 +357,8 @@ export async function encode(
   height: number,
   numFrames: number,
   framesGenerator: AsyncGenerator<ImageFrame, unknown>,
-  progressCallback?: (progress: number) => void
+  progressCallback?: (progress: number) => void,
+  fps?: number
 ): Promise<MP4ArrayBuffer> {
   console.log('encode() start', { width, height, numFrames });
   return new Promise<MP4ArrayBuffer>((resolve, reject) => {
@@ -358,7 +369,7 @@ export async function encode(
       reject(e instanceof VideoEncoderError ? e : new VideoEncoderError(String(e), 'UNKNOWN_ERROR'));
     }
 
-    manager = new MinimalEncoderManager(width, height, handleError);
+    manager = new MinimalEncoderManager(width, height, handleError, fps);
 
     manager
       .initialize()
