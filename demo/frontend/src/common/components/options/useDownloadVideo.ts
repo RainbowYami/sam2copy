@@ -42,6 +42,7 @@ export default function useDownloadVideo(): State {
       function onEncodingStateUpdate(event: EncodingStateUpdateEvent) {
         setDownloadingState('encoding');
         setProgress(event.progress);
+        console.log(event.progress)
       }
 
       function onEncodingComplete(event: EncodingCompletedEvent) {
