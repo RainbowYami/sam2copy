@@ -430,7 +430,7 @@ export default class VideoWorkerContext {
     const frames = decodedVideo.frames;
 
     for (let frameIndex = 0; frameIndex < frames.length; ++frameIndex) {
-      await this._drawFrameImpl(form, frameIndex, true);
+      await this._drawFrameImpl(form, frameIndex, false);
 
       const frame = frames[frameIndex];
       // 正確なタイムスタンプと期間を設定
