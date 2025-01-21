@@ -13,19 +13,53 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {
-  DecodeEvent,
-  EffectUpdateEvent,
-  EncodingCompletedEvent,
-  EncodingStateUpdateEvent,
-  FilmstripEvent,
-  FrameUpdateEvent,
-  LoadStartEvent,
-  RenderingErrorEvent,
-} from './VideoWorkerBridge';
+import { AudioTrackData } from '@/common/codecs/VideoDecoder';
+import { StreamingState } from '@/common/tracker/Tracker';
+import type { ErrorObject } from 'serialize-error';
 import {EffectOptions} from './effects/Effect';
 import type {Effects} from './effects/Effects';
 
+// Event Types
+export type DecodeEvent = {
+  totalFrames: number;
+  numFrames: number;
+  fps: number;
+  width: number;
+  height: number;
+  done: boolean;
+  audioTrack?: AudioTrackData;
+};
+
+export type LoadStartEvent = unknown;
+
+export type EffectUpdateEvent = {
+  name: keyof Effects;
+  index: number;
+  variant: number;
+  numVariants: number;
+};
+
+export type EncodingStateUpdateEvent = {
+  progress: number;
+};
+
+export type EncodingCompletedEvent = {
+  file: ArrayBuffer;
+};
+
+export type FilmstripEvent = {
+  filmstrip: ImageBitmap;
+};
+
+export type FrameUpdateEvent = {
+  index: number;
+};
+
+export type RenderingErrorEvent = {
+  error: ErrorObject;
+};
+
+// Request Types
 export type Request<A, P> = {
   action: A;
 } & P;
@@ -69,7 +103,12 @@ export type SetEffectRequest = Request<
   }
 >;
 
-export type EncodeVideoRequest = Request<'encode', unknown>;
+export type EncodeVideoRequest = Request<
+  'encode',
+  {
+    audioTrack?: AudioTrackData;
+  }
+>;
 
 export type EnableStatsRequest = Request<'enableStats', unknown>;
 

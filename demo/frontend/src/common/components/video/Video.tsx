@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { DecodedVideo } from '@/common/codecs/VideoDecoder';
 import {BaseTracklet, SegmentationPoint} from '@/common/tracker/Tracker';
 import {TrackerOptions, Trackers} from '@/common/tracker/Trackers';
 import {PauseFilled, PlayFilledAlt} from '@carbon/icons-react';
@@ -91,6 +92,7 @@ export type VideoRef = {
   get frame(): number;
   set frame(index: number);
   get numberOfFrames(): number;
+  get decodedVideo(): DecodedVideo | null;
   play(): void;
   pause(): void;
   stop(): void;
@@ -178,6 +180,9 @@ export default forwardRef<VideoRef, Props>(function Video(
       },
       get numberOfFrames() {
         return bridge.numberOfFrames;
+      },
+      get decodedVideo() {
+        return bridge.decodedVideo;
       },
       play(): void {
         bridge.play();

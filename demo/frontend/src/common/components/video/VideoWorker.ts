@@ -76,7 +76,21 @@ self.addEventListener(
 
         // Encode
         case 'encode': {
-          await context.encode();
+          const { audioTrack } = event.data;
+          console.log('[VideoWorker] Encoding with audio track:', {
+            hasAudioTrack: !!audioTrack,
+            audioTrackDetails: audioTrack ? {
+              codec: audioTrack.codec,
+              samplesCount: audioTrack.samples?.length,
+              timescale: audioTrack.timescale,
+              firstSample: audioTrack.samples?.[0] ? {
+                size: audioTrack.samples[0].data.byteLength,
+                duration: audioTrack.samples[0].duration,
+                is_sync: audioTrack.samples[0].is_sync
+              } : null
+            } : null
+          });
+          await context.encode(audioTrack);
           break;
         }
 

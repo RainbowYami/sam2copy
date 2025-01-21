@@ -175,6 +175,12 @@ def normalize_video(
         "yuv420p",
         "-threads",
         f"{FFMPEG_NUM_THREADS}",  # encode threads
+        "-c:a",
+        "copy",  # 音声をそのままコピー
+        "-map",
+        "0:v:0",  # 最初の動画ストリーム
+        "-map",
+        "0:a?",   # 音声ストリームが存在する場合はコピー
         out_path,
         "-y",
     ]

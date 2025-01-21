@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import {
+  AudioTrackData,
   DecodedVideo,
   ImageFrame,
   decodeStream,
@@ -384,7 +385,7 @@ export default class VideoWorkerContext {
     this._playbackRAFHandle = requestAnimationFrame(this._drawFrame.bind(this));
   }
 
-  async encode() {
+  async encode(audioTrack?: AudioTrackData) {
     const decodedVideo = this._decodedVideo;
     if (!decodedVideo) {
       throw new Error('cannot encode video because there is no decoded video available');
@@ -401,6 +402,28 @@ export default class VideoWorkerContext {
     // fps値が存在することを確認
     const fps = decodedVideo.fps ?? 30; // デフォルトは30fps
 
+    // 音声トラックがない場合は元の動画の音声トラックを使用
+    const audioTrackToUse = audioTrack || decodedVideo.audioTrack;
+
+    console.log('[VideoWorkerContext] Starting encode with audio track:', {
+      hasAudioTrack: !!audioTrackToUse,
+      audioTrackDetails: audioTrackToUse ? {
+        codec: audioTrackToUse.codec,
+        samplesCount: audioTrackToUse.samples?.length,
+        timescale: audioTrackToUse.timescale,
+        firstSample: audioTrackToUse.samples?.[0] ? {
+          size: audioTrackToUse.samples[0].data.byteLength,
+          duration: audioTrackToUse.samples[0].duration,
+          is_sync: audioTrackToUse.samples[0].is_sync
+        } : null,
+        lastSample: audioTrackToUse.samples?.length ? {
+          size: audioTrackToUse.samples[audioTrackToUse.samples.length - 1].data.byteLength,
+          duration: audioTrackToUse.samples[audioTrackToUse.samples.length - 1].duration,
+          is_sync: audioTrackToUse.samples[audioTrackToUse.samples.length - 1].is_sync
+        } : null
+      } : null
+    });
+
     const file = await encodeVideo(
       this.width,
       this.height,
@@ -411,7 +434,8 @@ export default class VideoWorkerContext {
           progress,
         });
       },
-      fps
+      fps,
+      audioTrackToUse
     );
     this.sendResponse<EncodingCompletedResponse>(
       'encodingCompleted',
@@ -546,9 +570,21 @@ export default class VideoWorkerContext {
     });
 
     let renderedFirstFrame = false;
+    let tempDecodedVideo: DecodedVideo | null = null;
     this._decodedVideo = await decodeStream(fileStream, async progress => {
-      const {fps, height, width, numFrames, frames} = progress;
-      this._decodedVideo = progress;
+      const {fps, height, width, numFrames, frames, audioTrack} = progress;
+      tempDecodedVideo = {
+        ...progress,
+        audioTrack: audioTrack
+      };
+      console.log('[VideoWorkerContext] Decoding progress:', {
+        hasAudioTrack: !!audioTrack,
+        audioTrackDetails: audioTrack ? {
+          codec: audioTrack.codec,
+          samplesCount: audioTrack.samples.length,
+          timescale: audioTrack.timescale
+        } : null
+      });
       if (!renderedFirstFrame) {
         renderedFirstFrame = true;
         canvas.width = width;
@@ -597,8 +633,22 @@ export default class VideoWorkerContext {
         width: width,
         height: height,
         done: false,
+        audioTrack: tempDecodedVideo?.audioTrack
       });
     });
+
+    // デコード完了時に最終的なデータを設定
+    if (tempDecodedVideo) {
+      this._decodedVideo = tempDecodedVideo;
+      console.log('[VideoWorkerContext] Decoding completed:', {
+        hasAudioTrack: !!tempDecodedVideo.audioTrack,
+        audioTrackDetails: tempDecodedVideo.audioTrack ? {
+          codec: tempDecodedVideo.audioTrack.codec,
+          samplesCount: tempDecodedVideo.audioTrack.samples.length,
+          timescale: tempDecodedVideo.audioTrack.timescale
+        } : null
+      });
+    }
 
     if (!renderedFirstFrame) {
       canvas.width = this._decodedVideo.width;
@@ -613,6 +663,7 @@ export default class VideoWorkerContext {
       width: this._decodedVideo.width,
       height: this._decodedVideo.height,
       done: true,
+      audioTrack: tempDecodedVideo?.audioTrack
     });
   }
 

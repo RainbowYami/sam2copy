@@ -36,12 +36,20 @@ export type ImageFrame = {
   duration: number;
 };
 
+export type AudioTrackData = {
+  samples: MP4Sample[];
+  timescale: number;
+  duration: number;
+  codec: string;
+};
+
 export type DecodedVideo = {
   width: number;
   height: number;
   frames: ImageFrame[];
   numFrames: number;
   fps: number;
+  audioTrack?: AudioTrackData;
 };
 
 function decodeInternal(
@@ -52,6 +60,12 @@ function decodeInternal(
   return new Promise((resolve, reject) => {
     const imageFrames: ImageFrame[] = [];
     const globalSamples: MP4Sample[] = [];
+    let audioTrackData: AudioTrackData | undefined;
+    let audioSamplesCollected = false;
+    let audioSamplesPromiseResolve: (() => void) | null = null;
+    const audioSamplesPromise = new Promise<void>(resolve => {
+      audioSamplesPromiseResolve = resolve;
+    });
 
     let decoder: VideoDecoder;
 
@@ -60,8 +74,97 @@ function decodeInternal(
 
     mp4File.onError = reject;
     mp4File.onReady = async info => {
+      // ビデオトラック処理
       if (info.videoTracks.length > 0) {
         track = info.videoTracks[0];
+      
+      // 音声トラック処理
+      if (info.audioTracks && info.audioTracks.length > 0) {
+        const audioTrack = info.audioTracks[0];
+        console.log('[AudioTrack] Found track:', {
+          id: audioTrack.id,
+          codec: audioTrack.codec,
+          timescale: audioTrack.timescale,
+          duration: audioTrack.duration,
+          sampleSize: audioTrack.sample_size,
+          channelCount: audioTrack.channel_count,
+          sampleRate: audioTrack.sample_rate,
+          bitDepth: audioTrack.audio.bitDepth
+        });
+
+        const audioSamples: MP4Sample[] = [];
+        
+        mp4File.setExtractionOptions(audioTrack.id, null, {
+          nbSamples: Infinity,
+        });
+        
+        // 音声サンプル用の新しいハンドラを設定
+        const videoSamplesHandler = mp4File.onSamples;
+        mp4File.onSamples = (id, user, samples) => {
+          if (id === audioTrack.id) {
+            console.log('[AudioTrack] Received samples:', {
+              count: samples.length,
+              totalDuration: samples.reduce((sum, s) => sum + s.duration, 0),
+              firstSample: samples[0] ? {
+                size: samples[0].data.byteLength,
+                duration: samples[0].duration,
+                dts: samples[0].dts,
+                cts: samples[0].cts,
+                is_sync: samples[0].is_sync,
+                timescale: samples[0].timescale
+              } : null,
+              lastSample: samples[samples.length - 1] ? {
+                size: samples[samples.length - 1].data.byteLength,
+                duration: samples[samples.length - 1].duration,
+                dts: samples[samples.length - 1].dts,
+                cts: samples[samples.length - 1].cts,
+                is_sync: samples[samples.length - 1].is_sync,
+                timescale: samples[samples.length - 1].timescale
+              } : null
+            });
+            audioSamples.push(...samples);
+            if (samples.length > 0) {
+              audioSamplesCollected = true;
+              audioSamplesPromiseResolve?.();
+            }
+          } else if (videoSamplesHandler) {
+            videoSamplesHandler(id, user, samples);
+          }
+        };
+
+        // 音声トラック情報を保持
+        audioTrackData = {
+          samples: audioSamples,
+          timescale: audioTrack.timescale,
+          duration: audioTrack.duration,
+          codec: audioTrack.codec
+        };
+        console.log('[AudioTrack] Extracted:', {
+          codec: audioTrack.codec,
+          timescale: audioTrack.timescale,
+          duration: audioTrack.duration,
+          samplesCount: audioSamples.length,
+          totalDuration: audioSamples.reduce((sum, s) => sum + s.duration, 0),
+          averageDuration: audioSamples.reduce((sum, s) => sum + s.duration, 0) / audioSamples.length
+        });
+
+          // onProgressとresolveを拡張して音声トラック情報を含める
+          const originalOnProgress = onProgress;
+          onProgress = (video: DecodedVideo) => {
+            originalOnProgress({
+              ...video,
+              audioTrack: audioTrackData
+            });
+          };
+
+          const originalResolve = resolve;
+          resolve = ((video: DecodedVideo) => {
+            originalResolve({
+              ...video,
+              audioTrack: audioTrackData
+            });
+          }) as typeof resolve;
+        }
       } else {
         // The video does not have a video track, so looking if there is an
         // "otherTracks" available. Note, I couldn't find any documentation
@@ -149,6 +252,7 @@ function decodeInternal(
                 fps:
                   (saveTrack.nb_samples / saveTrack.duration) *
                   saveTrack.timescale,
+                audioTrack: audioTrackData,
               });
             }
           }
@@ -159,6 +263,10 @@ function decodeInternal(
             // can return decoded frames out of order.
             imageFrames.sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
             decoder.close();
+            // 音声サンプルの収集を待ってからresolve
+            if (audioTrackData && !audioSamplesCollected) {
+              await audioSamplesPromise;
+            }
             resolve({
               width: saveTrack.track_width,
               height: saveTrack.track_height,
@@ -167,6 +275,7 @@ function decodeInternal(
               fps:
                 (saveTrack.nb_samples / saveTrack.duration) *
                 saveTrack.timescale,
+              audioTrack: audioTrackData,
             });
           }
         },

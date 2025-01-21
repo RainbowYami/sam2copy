@@ -67,7 +67,32 @@ export default function useDownloadVideo(): State {
       if (downloadingState === 'default' || downloadingState === 'completed') {
         setDownloadingState('started');
         video?.pause();
-        video?.encode();
+        // 元の動画の音声トラックを取得してエンコードに渡す
+        const audioTrack = video?.decodedVideo?.audioTrack;
+        console.log('[Download] Audio track details:', {
+          exists: !!audioTrack,
+          codec: audioTrack?.codec,
+          samplesCount: audioTrack?.samples?.length,
+          timescale: audioTrack?.timescale,
+          duration: audioTrack?.duration,
+          firstSample: audioTrack?.samples?.[0] ? {
+            size: audioTrack.samples[0].data.byteLength,
+            duration: audioTrack.samples[0].duration,
+            is_sync: audioTrack.samples[0].is_sync
+          } : null,
+          lastSample: audioTrack?.samples?.length ? {
+            size: audioTrack.samples[audioTrack.samples.length - 1].data.byteLength,
+            duration: audioTrack.samples[audioTrack.samples.length - 1].duration,
+            is_sync: audioTrack.samples[audioTrack.samples.length - 1].is_sync
+          } : null
+        });
+        
+        if (!audioTrack?.samples?.length) {
+          console.warn('[Download] No audio samples found in the track');
+        }
+        
+        console.log('[Download] Starting encode with audio track');
+        video?.encode(audioTrack);
       }
     });
   }

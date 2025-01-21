@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { AudioTrackData, DecodedVideo } from '@/common/codecs/VideoDecoder';
 import {EffectIndex, Effects} from '@/common/components/video/effects/Effects';
 import {registerSerializableConstructors} from '@/common/error/ErrorSerializationUtils';
 import {
@@ -71,6 +72,7 @@ export type DecodeEvent = {
   width: number;
   height: number;
   done: boolean;
+  audioTrack?: AudioTrackData;
 };
 
 export type LoadStartEvent = unknown;
@@ -185,6 +187,11 @@ export default class VideoWorkerBridge extends EventEmitter<VideoWorkerEventMap>
   protected worker: Worker;
   private metadata: Metadata | null = null;
   private frameIndex: number = 0;
+  private _decodedVideo: DecodedVideo | null = null;
+
+  public get decodedVideo() {
+    return this._decodedVideo;
+  }
 
   private _sessionId: string | null = null;
 
@@ -228,6 +235,45 @@ export default class VideoWorkerBridge extends EventEmitter<VideoWorkerEventMap>
             break;
           case 'decode':
             this.metadata = event.data;
+            if (event.data.done) {
+              console.log('[VideoWorkerBridge] Received decode event:', {
+                data: event.data,
+                hasAudioTrack: !!event.data.audioTrack,
+                audioTrackDetails: event.data.audioTrack ? {
+                  codec: event.data.audioTrack.codec,
+                  samplesCount: event.data.audioTrack.samples?.length,
+                  timescale: event.data.audioTrack.timescale,
+                  firstSample: event.data.audioTrack.samples?.[0] ? {
+                    size: event.data.audioTrack.samples[0].data.byteLength,
+                    duration: event.data.audioTrack.samples[0].duration,
+                    is_sync: event.data.audioTrack.samples[0].is_sync
+                  } : null
+                } : null
+              });
+
+              this._decodedVideo = {
+                width: event.data.width,
+                height: event.data.height,
+                frames: [],  // フレームはWorker側で管理
+                numFrames: event.data.totalFrames,
+                fps: event.data.fps,
+                audioTrack: event.data.audioTrack
+              };
+
+              console.log('[VideoWorkerBridge] Decoded video updated:', {
+                hasAudioTrack: !!this._decodedVideo.audioTrack,
+                audioTrackDetails: this._decodedVideo.audioTrack ? {
+                  codec: this._decodedVideo.audioTrack.codec,
+                  samplesCount: this._decodedVideo.audioTrack.samples?.length,
+                  timescale: this._decodedVideo.audioTrack.timescale,
+                  firstSample: this._decodedVideo.audioTrack.samples?.[0] ? {
+                    size: this._decodedVideo.audioTrack.samples[0].data.byteLength,
+                    duration: this._decodedVideo.audioTrack.samples[0].duration,
+                    is_sync: this._decodedVideo.audioTrack.samples[0].is_sync
+                  } : null
+                } : null
+              });
+            }
             break;
           case 'frameUpdate':
             this.frameIndex = event.data.index;
@@ -323,8 +369,25 @@ export default class VideoWorkerBridge extends EventEmitter<VideoWorkerEventMap>
     });
   }
 
-  encode(): void {
-    this.sendRequest<EncodeVideoRequest>('encode');
+  encode(audioTrack?: AudioTrackData): void {
+    // 渡された音声トラックがない場合は、デコードされた動画の音声トラックを使用
+    const audioTrackToUse = audioTrack || this._decodedVideo?.audioTrack;
+    console.log('[VideoWorkerBridge] Encoding with audio track:', {
+      hasAudioTrack: !!audioTrackToUse,
+      audioTrackDetails: audioTrackToUse ? {
+        codec: audioTrackToUse.codec,
+        samplesCount: audioTrackToUse.samples?.length,
+        timescale: audioTrackToUse.timescale,
+        firstSample: audioTrackToUse.samples?.[0] ? {
+          size: audioTrackToUse.samples[0].data.byteLength,
+          duration: audioTrackToUse.samples[0].duration,
+          is_sync: audioTrackToUse.samples[0].is_sync
+        } : null
+      } : null
+    });
+    this.sendRequest<EncodeVideoRequest>('encode', {
+      audioTrack: audioTrackToUse,
+    });
   }
 
   initializeTracker(name: keyof Trackers, options: TrackerOptions): void {
