@@ -146,7 +146,7 @@ export default function useVideoWorker(
         });
 
         const uploadedBlobUrl = blockBlobClient.url;
-        setEncodedAzureUrl(uploadedBlobUrl);
+
         console.log('Uploaded to Azure Blob Storage URL =>', uploadedBlobUrl);
 
         // ここでバックエンドにbloburlを渡す
@@ -166,7 +166,11 @@ export default function useVideoWorker(
             console.error('No downloadUrl returned from /upload_encoded_video');
             return;
           }
-          setEncodedAzureUrl(uploadEncodedData.downloadUrl);
+
+            // ▼▼▼ ここで "azurite"を"localhost" に置換してから setEncodedAzureUrl する ▼▼▼
+        const replacedUploadedUrl = uploadEncodedData.downloadUrl.replace('azurite', 'localhost');
+        setEncodedAzureUrl(replacedUploadedUrl);
+        console.log('Uploaded to Azure Blob Storage URL =>', replacedUploadedUrl);
           console.log('Final processed video from backend =>', uploadEncodedData.downloadUrl);
         } catch (err) {
           console.error('Error calling /upload_encoded_video:', err);

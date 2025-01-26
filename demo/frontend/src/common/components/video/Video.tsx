@@ -26,6 +26,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import {Button} from 'react-daisyui';
 
@@ -37,6 +38,7 @@ import {color} from '@/theme/tokens.stylex';
 import {useAtom} from 'jotai';
 import useResizeObserver from 'use-resize-observer';
 import VideoLoadingOverlay from './VideoLoadingOverlay';
+import { VideoDownloadModal } from './VideoDownloadModal';
 import {
   StreamingStateUpdateEvent,
   VideoWorkerEventMap,
@@ -145,12 +147,19 @@ export default forwardRef<VideoRef, Props>(function Video(
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isPlaying, setIsPlaying] = useAtom(isPlayingAtom);
   const [isVideoLoading, setIsVideoLoading] = useAtom(isVideoLoadingAtom);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
 
   // useVideoWorker の戻り値 -> { bridge, encodedAzureUrl }
   // ここでは bridge を受け取り、イベントリスナー登録などを行う
-  const { bridge } = useVideoWorker(src, canvasRef, {
+  const { bridge, encodedAzureUrl } = useVideoWorker(src, canvasRef, {
     createVideoWorker,
   });
+
+  useEffect(() => {
+    if (encodedAzureUrl) {
+      setShowDownloadModal(true);
+    }
+  }, [encodedAzureUrl]);
 
   const {
     ref: resizeObserverRef,
@@ -368,7 +377,12 @@ export default forwardRef<VideoRef, Props>(function Video(
           />
         </div>
       )}
+      {showDownloadModal && encodedAzureUrl && (
+        <VideoDownloadModal
+          url={encodedAzureUrl}
+          onClose={() => setShowDownloadModal(false)}
+        />
+      )}
     </div>
   );
 });
-
