@@ -1,3 +1,4 @@
+
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -145,7 +146,9 @@ export default forwardRef<VideoRef, Props>(function Video(
   const [isPlaying, setIsPlaying] = useAtom(isPlayingAtom);
   const [isVideoLoading, setIsVideoLoading] = useAtom(isVideoLoadingAtom);
 
-  const bridge = useVideoWorker(src, canvasRef, {
+  // useVideoWorker の戻り値 -> { bridge, encodedAzureUrl }
+  // ここでは bridge を受け取り、イベントリスナー登録などを行う
+  const { bridge } = useVideoWorker(src, canvasRef, {
     createVideoWorker,
   });
 
@@ -170,7 +173,7 @@ export default forwardRef<VideoRef, Props>(function Video(
         return bridge.width;
       },
       get height() {
-        return bridge.width;
+        return bridge.width; // TODO: fix? maybe should be "bridge.height" if needed
       },
       get frame() {
         return bridge.frame;
@@ -199,11 +202,7 @@ export default forwardRef<VideoRef, Props>(function Video(
       nextFrame(): void {
         bridge.nextFrame();
       },
-      setEffect(
-        name: keyof Effects,
-        index: number,
-        options?: EffectOptions,
-      ): void {
+      setEffect(name: keyof Effects, index: number, options?: EffectOptions): void {
         bridge.setEffect(name, index, options);
       },
       encode(): void {
@@ -231,7 +230,7 @@ export default forwardRef<VideoRef, Props>(function Video(
         return bridge.createFilmstrip(width, height);
       },
       // Tracker
-      initializeTracker(name: keyof Trackers, options: TrackerOptions): void {
+      initializeTracker(name: keyof Trackers, options?: TrackerOptions): void {
         bridge.initializeTracker(name, options);
       },
       startSession(videoUrl: string): Promise<string | null> {
@@ -262,23 +261,18 @@ export default forwardRef<VideoRef, Props>(function Video(
     [bridge],
   );
 
-  // Handle video playback events (get playback state to main thread)
+  // Handle video playback and Worker events
   useEffect(() => {
-    let isPlaying = false;
+    let playing = false;
 
     function onFocus() {
-      // Workaround for Safari where the video frame renders black on
-      // unknown events. Trigger re-render frame on focus.
-      if (!isPlaying) {
+      if (!playing) {
         bridge.goToFrame(bridge.frame);
       }
     }
 
     function onVisibilityChange() {
-      // Workaround for Safari where the video frame renders black on
-      // visibility change hidden. Returning to visible shows a black
-      // frame instead of rendering the current frame.
-      if (document.visibilityState === 'visible' && !isPlaying) {
+      if (document.visibilityState === 'visible' && !playing) {
         bridge.goToFrame(bridge.frame);
       }
     }
@@ -290,16 +284,15 @@ export default forwardRef<VideoRef, Props>(function Video(
     }
 
     function onPlay() {
-      isPlaying = true;
+      playing = true;
       setIsPlaying(true);
     }
     function onPause() {
-      isPlaying = false;
+      playing = false;
       setIsPlaying(false);
     }
 
     function onStreamingDone(event: StreamingStateUpdateEvent) {
-      // continue to play after streaming is done (state is "full")
       if (event.state === 'full') {
         bridge.play();
       }
@@ -321,6 +314,7 @@ export default forwardRef<VideoRef, Props>(function Video(
     bridge.addEventListener('streamingStateUpdate', onStreamingDone);
     bridge.addEventListener('loadstart', onLoadStart);
     bridge.addEventListener('decode', onDecodeStart);
+
     return () => {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('visibilitychange', onVisibilityChange);
@@ -377,3 +371,4 @@ export default forwardRef<VideoRef, Props>(function Video(
     </div>
   );
 });
+

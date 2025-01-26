@@ -24,6 +24,7 @@ import {stylexPlugin} from 'vite-plugin-stylex-dev';
 
 export default defineConfig({
   resolve: {
+    conditions: ['browser'],
     alias: {
       '@': path.resolve(__dirname, './src'),
     },

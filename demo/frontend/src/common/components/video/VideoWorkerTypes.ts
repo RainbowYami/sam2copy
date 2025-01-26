@@ -1,3 +1,4 @@
+
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -13,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import { AudioTrackData } from '@/common/codecs/VideoDecoder';
 import { StreamingState } from '@/common/tracker/Tracker';
 import type { ErrorObject } from 'serialize-error';
@@ -43,8 +45,12 @@ export type EncodingStateUpdateEvent = {
   progress: number;
 };
 
+/**
+ * エンコード完了イベントで実際に渡したいデータの型。 
+ * 現在はファイルを Blob として扱うので、file: Blob とした。
+ */
 export type EncodingCompletedEvent = {
-  file: ArrayBuffer;
+  file: Blob; 
 };
 
 export type FilmstripEvent = {
@@ -63,8 +69,6 @@ export type RenderingErrorEvent = {
 export type Request<A, P> = {
   action: A;
 } & P;
-
-// REQUESTS
 
 export type SetCanvasRequest = Request<
   'setCanvas',
@@ -102,14 +106,12 @@ export type SetEffectRequest = Request<
     options?: EffectOptions;
   }
 >;
-
 export type EncodeVideoRequest = Request<
   'encode',
   {
     audioTrack?: AudioTrackData;
   }
 >;
-
 export type EnableStatsRequest = Request<'enableStats', unknown>;
 
 export type VideoWorkerRequest =
@@ -135,6 +137,9 @@ export type ErrorResponse = Request<
   }
 >;
 
+/**
+ * decode イベントの応答
+ */
 export type DecodeResponse = Request<'decode', DecodeEvent>;
 
 export type EncodingStateUpdateResponse = Request<
@@ -142,17 +147,17 @@ export type EncodingStateUpdateResponse = Request<
   EncodingStateUpdateEvent
 >;
 
+/**
+ * エンコード完了時には、file: Blob を受け渡す
+ */
 export type EncodingCompletedResponse = Request<
   'encodingCompleted',
   EncodingCompletedEvent
 >;
 
 export type FilmstripResponse = Request<'filmstrip', FilmstripEvent>;
-
 export type PlayResponse = Request<'play', unknown>;
-
 export type PauseResponse = Request<'pause', unknown>;
-
 export type FrameUpdateResponse = Request<'frameUpdate', FrameUpdateEvent>;
 
 export type RenderingErrorResponse = Request<
@@ -160,12 +165,12 @@ export type RenderingErrorResponse = Request<
   RenderingErrorEvent
 >;
 
-// HTMLVideoElement events https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video#events
-
 export type LoadStartResponse = Request<'loadstart', LoadStartEvent>;
-
 export type EffectUpdateResponse = Request<'effectUpdate', EffectUpdateEvent>;
 
+/**
+ * VideoWorkerResponse は Worker がメインスレッドに送る全Eventの型集合
+ */
 export type VideoWorkerResponse =
   | ErrorResponse
   | FilmstripResponse

@@ -8,6 +8,7 @@ COPY yarn.lock ./
 
 # Install dependencies including devDependencies
 RUN yarn install
+RUN yarn add @azure/storage-blob 
 
 # The source code will be mounted as a volume in docker-compose.yaml
 # This allows for hot-reloading and debugging TypeScript directly

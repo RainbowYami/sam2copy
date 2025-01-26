@@ -1,4 +1,22 @@
 services:
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service
+      - "10002:10002"  # Table service
+    volumes:
+      - azurite_data:/data
+    command:
+      azurite
+      --blobHost 0.0.0.0
+      --queueHost 0.0.0.0
+      --tableHost 0.0.0.0
+      --location /data
+      --debug /data/debug.log
+      --loose
+
+
   frontend:
     image: sam2/frontend
     build:
@@ -12,6 +30,8 @@ services:
     command: yarn dev --host
     environment:
       - NODE_ENV=development
+      - VITE_AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;
+      - VITE_AZURE_STORAGE_CONTAINER_NAME=test-container
 
   backend:
     image: sam2/backend
@@ -39,6 +59,9 @@ services:
       - VIDEO_ENCODE_MAX_WIDTH=1280
       - VIDEO_ENCODE_MAX_HEIGHT=720
       - VIDEO_ENCODE_VERBOSE=False
+      - AZURE_STORAGE_ACCOUNT_NAME=devstoreaccount1
+      - AZURE_STORAGE_ACCOUNT_KEY=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+      - AZURE_STORAGE_CONTAINER_NAME=test-container
     deploy:
       resources:
         reservations:
@@ -46,3 +69,10 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+volumes:
+  azurite_data:
+
+networks:
+  app_network:
+    driver: bridge

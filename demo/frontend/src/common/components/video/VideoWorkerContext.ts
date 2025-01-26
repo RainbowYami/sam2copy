@@ -1,14 +1,15 @@
+
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
@@ -53,6 +54,9 @@ import {
   RenderingErrorResponse,
   VideoWorkerResponse,
 } from './VideoWorkerTypes';
+
+// 追加: Azure Blobを扱うためのインポート
+import { BlobServiceClient } from '@azure/storage-blob';
 
 function getEvenlySpacedItems(decodedVideo: DecodedVideo, x: number) {
   const p = Math.floor(decodedVideo.numFrames / Math.max(1, x - 1));
@@ -127,7 +131,7 @@ export default class VideoWorkerContext {
   constructor() {
     this._effects = [
       AllEffects.Original, // Image as background
-      AllEffects.Overlay, // Masks on top
+      AllEffects.Overlay,  // Masks on top
     ];
 
     // Loading watermark fonts. This is going to be async, but by the time of
@@ -136,11 +140,6 @@ export default class VideoWorkerContext {
   }
 
   private initializeWebGLContext(width: number, height: number): void {
-    // Given that we use highlight and background effects as layers,
-    // we need to create two WebGL contexts, one for each set.
-    // To avoid memory leaks and too many active contexts,
-    // these contexts must be re-used over the lifecycle of the session.
-
     if (this._canvasHighlights == null && this._glObjects == null) {
       this._canvasHighlights = new OffscreenCanvas(width, height);
       this._glObjects = this._canvasHighlights.getContext('webgl2');
@@ -160,7 +159,6 @@ export default class VideoWorkerContext {
       (this._canvasHighlights.width !== width ||
         this._canvasHighlights.height !== height)
     ) {
-      // Resize canvas and webgl viewport
       this._canvasHighlights.width = width;
       this._canvasHighlights.height = height;
       if (this._glObjects != null) {
@@ -187,7 +185,6 @@ export default class VideoWorkerContext {
       (this._canvasBackground.width != width ||
         this._canvasBackground.height != height)
     ) {
-      // Resize canvas and webgl viewport
       this._canvasBackground.width = width;
       this._canvasBackground.height = height;
       if (this._glBackground != null) {
@@ -216,19 +213,16 @@ export default class VideoWorkerContext {
   }
 
   public goToFrame(index: number): void {
-    // Cancel any ongoing render
     this._cancelRender();
     this.updateFrameIndex(index);
     this._playbackRAFHandle = requestAnimationFrame(this._drawFrame.bind(this));
   }
 
   public play(): void {
-    // Video already playing
     if (this._isPlaying) {
       return;
     }
 
-    // Cannot playback without frames
     if (this._decodedVideo === null) {
       throw new Error('no decoded video');
     }
@@ -236,8 +230,6 @@ export default class VideoWorkerContext {
     const {numFrames, fps} = this._decodedVideo;
     const timePerFrame = 1000 / (fps ?? 30);
     let startTime: number | null = null;
-    // The offset frame index compensate for cases where the video playback
-    // does not start at frame index 0.
     const offsetFrameIndex = this._frameIndex;
 
     const updateFrame = (time: number) => {
@@ -252,7 +244,6 @@ export default class VideoWorkerContext {
         (Math.floor(diff / timePerFrame) + offsetFrameIndex) % numFrames;
 
       if (this._frameIndex !== expectedFrame && !this._isDrawing) {
-        // Update to the next expected frame
         this.updateFrameIndex(expectedFrame);
         this._drawFrame();
       }
@@ -333,10 +324,7 @@ export default class VideoWorkerContext {
   ): Promise<void> {
     const effect: Effect = AllEffects[name];
 
-    // The effect has changed.
     if (this._effects[index] !== effect) {
-      // Effect changed. Cleanup old effect first. Effects are responsible for
-      // cleaning up their memory.
       await this._effects[index].cleanup();
 
       const offCanvas =
@@ -352,9 +340,6 @@ export default class VideoWorkerContext {
         throw new Error('need WebGL context to render effects');
       }
 
-      // Initialize the effect. This can be used by effects to prepare
-      // resources needed for rendering. If the video wasn't decoded yet, the
-      // effect setup will happen in the _decodeVideo function.
       if (this._decodedVideo != null) {
         await effect.setup({
           width: this._decodedVideo.width,
@@ -365,15 +350,10 @@ export default class VideoWorkerContext {
       }
     }
 
-    // Update effect if already set effect was clicked again. This can happen
-    // when there is a new variant of the effect.
     if (options != null) {
-      // Update effect if already set effect was clicked again. This can happen
-      // when there is a new variant of the effect.
       await effect.update(options);
     }
 
-    // Notify the frontend about the effect state including its variant.
     this.sendResponse<EffectUpdateResponse>('effectUpdate', {
       name,
       index,
@@ -385,7 +365,7 @@ export default class VideoWorkerContext {
     this._playbackRAFHandle = requestAnimationFrame(this._drawFrame.bind(this));
   }
 
-  async encode(audioTrack?: AudioTrackData) {
+  public async encode(audioTrack?: AudioTrackData) {
     const decodedVideo = this._decodedVideo;
     if (!decodedVideo) {
       throw new Error('cannot encode video because there is no decoded video available');
@@ -399,10 +379,8 @@ export default class VideoWorkerContext {
 
     const form = new CanvasForm(ctx);
 
-    // fps値が存在することを確認
-    const fps = decodedVideo.fps ?? 30; // デフォルトは30fps
+    const fps = decodedVideo.fps ?? 30;
 
-    // 音声トラックがない場合は元の動画の音声トラックを使用
     const audioTrackToUse = audioTrack || decodedVideo.audioTrack;
 
     console.log('[VideoWorkerContext] Starting encode with audio track:', {
@@ -424,7 +402,7 @@ export default class VideoWorkerContext {
       } : null
     });
 
-    const file = await encodeVideo(
+    const arrayBuffer = await encodeVideo(
       this.width,
       this.height,
       decodedVideo.frames.length,
@@ -437,12 +415,12 @@ export default class VideoWorkerContext {
       fps,
       audioTrackToUse
     );
+
+    // Blobに変換して返却
+    const fileBlob = new Blob([arrayBuffer], { type: 'video/mp4' });
     this.sendResponse<EncodingCompletedResponse>(
       'encodingCompleted',
-      {
-        file,
-      },
-      [file],
+      { file: fileBlob },
     );
   }
 
@@ -457,9 +435,8 @@ export default class VideoWorkerContext {
       await this._drawFrameImpl(form, frameIndex, false);
 
       const frame = frames[frameIndex];
-      // 正確なタイムスタンプと期間を設定
-      const timestamp = frameIndex * (1_000_000 / decodedVideo.fps); // マイクロ秒単位
-      const duration = 1_000_000 / decodedVideo.fps; // マイクロ秒単位
+      const timestamp = frameIndex * (1_000_000 / decodedVideo.fps);
+      const duration = 1_000_000 / decodedVideo.fps;
 
       const videoFrame = new VideoFrame(canvas, {
         timestamp: timestamp,
@@ -508,15 +485,11 @@ export default class VideoWorkerContext {
   }
 
   public close(): void {
-    // Clear any frame content
     this._ctx?.reset();
 
-    // Close frames of previously decoded video.
     this._decodedVideo?.frames.forEach(f => f.bitmap.close());
     this._decodedVideo = null;
   }
-
-  // TRACKER
 
   public updateTracklets(
     frameIndex: number,
@@ -536,8 +509,6 @@ export default class VideoWorkerContext {
   public clearMasks(): void {
     this._tracklets = [];
   }
-
-  // PRIVATE FUNCTIONS
 
   private sendResponse<T extends VideoWorkerResponse>(
     action: T['action'],
@@ -589,10 +560,8 @@ export default class VideoWorkerContext {
         renderedFirstFrame = true;
         canvas.width = width;
         canvas.height = height;
-        // Set WebGL contexts right after the first frame decoded
         this.initializeWebGLContext(width, height);
 
-        // Initialize effect once first frame was decoded.
         for (const [i, effect] of this._effects.entries()) {
           const offCanvas =
             i === EffectIndex.BACKGROUND
@@ -614,9 +583,6 @@ export default class VideoWorkerContext {
           });
         }
 
-        // Need to render frame immediately. Cannot go through
-        // requestAnimationFrame because then rendering this frame would be
-        // delayed until the full video has finished decoding.
         this._drawFrame();
 
         this._stats.videoFps?.updateMaxValue(fps);
@@ -637,7 +603,6 @@ export default class VideoWorkerContext {
       });
     });
 
-    // デコード完了時に最終的なデータを設定
     if (tempDecodedVideo) {
       this._decodedVideo = tempDecodedVideo;
       console.log('[VideoWorkerContext] Decoding completed:', {
@@ -695,12 +660,7 @@ export default class VideoWorkerContext {
       const {bitmap} = frame;
 
       this._stats.frameBmp?.begin();
-
-      // Need to convert VideoFrame to ImageBitmap because Safari can only apply
-      // globalCompositeOperation on ImageBitmap and fails on VideoFrame. FWIW,
-      // Chrome treats VideoFrame similarly to ImageBitmap.
       const frameBitmap = await createImageBitmap(bitmap);
-
       this._stats.frameBmp?.end();
 
       const masks: Mask[] = [];
@@ -743,19 +703,15 @@ export default class VideoWorkerContext {
         actionPoint: null,
       };
 
-      // Allows animation within a single frame.
       if (this._allowAnimation && step < maxSteps) {
-        const animationDuration = 2; // Total duration of the animation in seconds
+        const animationDuration = 2;
         const progress = step / maxSteps;
         const timeParameter = progress * animationDuration;
-        // Pass dynamic effect params
         effectParams.timeParameter = timeParameter;
         effectParams.actionPoint = effectActionPoint;
 
         this._processEffects(form, effectParams, tracklets);
 
-        // Use RAF to draw frame, and update the display,
-        // this avoids to wait until the javascript call stack is cleared.
         requestAnimationFrame(() =>
           this._drawFrameImpl(form, frameIndex, false, step + 1, maxSteps),
         );
@@ -767,9 +723,6 @@ export default class VideoWorkerContext {
         this._drawWatermark(form, frameBitmap);
       }
 
-      // Do not simply drop the JavaScript reference to the ImageBitmap; doing so
-      // will keep its graphics resource alive until the next time the garbage
-      // collector runs.
       frameBitmap.close();
 
       {
@@ -787,8 +740,6 @@ export default class VideoWorkerContext {
   private _drawWatermark(form: CanvasForm, frameBitmap: ImageBitmap): void {
     const frameWidth = this._canvas?.width || frameBitmap.width;
     const frameHeight = this._canvas?.height || frameBitmap.height;
-    // Font size is either 12 or smaller based on available width
-    // since the font is not monospaced, we approximate it'll fit 1.5 more characters than monospaced
     const approximateFontSize = Math.min(
       Math.floor(frameWidth / (VIDEO_WATERMARK_TEXT.length / 1.5)),
       12,
@@ -816,7 +767,6 @@ export default class VideoWorkerContext {
     );
     form.ctx.fill();
 
-    // Always reset the text style because some effects may change text styling in the same ctx
     form.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     form.ctx.textAlign = 'left';
 

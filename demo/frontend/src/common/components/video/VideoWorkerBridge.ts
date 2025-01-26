@@ -1,14 +1,15 @@
+
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
@@ -88,9 +89,10 @@ export type EncodingStateUpdateEvent = {
   progress: number;
 };
 
-export type EncodingCompletedEvent = {
-  file: MP4ArrayBuffer;
-};
+// Blobに変更
+export interface EncodingCompletedEvent {
+  file: Blob;
+}
 
 export interface PlayEvent {}
 
@@ -370,7 +372,6 @@ export default class VideoWorkerBridge extends EventEmitter<VideoWorkerEventMap>
   }
 
   encode(audioTrack?: AudioTrackData): void {
-    // 渡された音声トラックがない場合は、デコードされた動画の音声トラックを使用
     const audioTrackToUse = audioTrack || this._decodedVideo?.audioTrack;
     console.log('[VideoWorkerBridge] Encoding with audio track:', {
       hasAudioTrack: !!audioTrackToUse,
@@ -400,9 +401,7 @@ export default class VideoWorkerBridge extends EventEmitter<VideoWorkerEventMap>
   startSession(videoUrl: string): Promise<string | null> {
     return new Promise(resolve => {
       const handleResponse = (
-        event: MessageEvent<
-          SessionStartedResponse | SessionStartFailedResponse
-        >,
+        event: MessageEvent<SessionStartedResponse | SessionStartFailedResponse>,
       ) => {
         if (event.data.action === 'sessionStarted') {
           this.worker.removeEventListener('message', handleResponse);
@@ -556,33 +555,4 @@ export default class VideoWorkerBridge extends EventEmitter<VideoWorkerEventMap>
       },
     );
   }
-
-  // // Override EventEmitter
-
-  // addEventListener<K extends keyof WorkerEventMap>(
-  //   type: K,
-  //   listener: (ev: WorkerEventMap[K]) => unknown,
-  // ): void {
-  //   switch (type) {
-  //     case 'frameUpdate':
-  //       {
-  //         const event: FrameUpdateEvent = {
-  //           index: this.frameIndex,
-  //         };
-  //         // @ts-expect-error Incorrect typing. Not sure how to correctly type it
-  //         listener(event);
-  //       }
-  //       break;
-  //     case 'sessionStarted': {
-  //       if (this.sessionId !== null) {
-  //         const event: SessionStartedEvent = {
-  //           sessionId: this.sessionId,
-  //         };
-  //         // @ts-expect-error Incorrect typing. Not sure how to correctly type it
-  //         listener(event);
-  //       }
-  //     }
-  //   }
-  //   super.addEventListener(type, listener);
-  // }
 }
