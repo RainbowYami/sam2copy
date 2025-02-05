@@ -281,7 +281,7 @@ def remove_small_regions(
     n_labels, regions, stats, _ = cv2.connectedComponentsWithStats(working_mask, 8)
     sizes = stats[:, -1][1:]  # Row 0 is background label
     small_regions = [i + 1 for i, s in enumerate(sizes) if s < area_thresh]
-    if len(small_regions) == 0:
+    if len(small_regions) <= 1:
         return mask, False
     fill_labels = [0] + small_regions
     if not correct_holes:
