@@ -124,17 +124,29 @@ Please refer to the examples in [video_predictor_example.ipynb](./notebooks/vide
 ## Load from 🤗 Hugging Face
 
 ### What is Hugging Face and Why Use It?
-[Hugging Face](https://huggingface.co/) is a widely used platform for sharing and distributing machine learning models, datasets, and tools. It provides an easy-to-use interface for downloading and managing pre-trained models, making it convenient for users who want quick access to AI models without manually handling large files.
+[Hugging Face](https://huggingface.co/) is a widely used platform for hosting and distributing machine learning models, datasets, and tools. It provides a **centralized repository** for pre-trained AI models, allowing researchers and developers to **easily download and use models without manual setup**.
 
-Using Hugging Face with SAM2 allows you to:
-- **Easily load pre-trained models** without downloading or storing them locally.
-- **Ensure you're using the latest version** of the model without manually updating checkpoints.
-- **Seamlessly integrate with cloud environments**, reducing setup complexity.
+#### **Why Use Hugging Face for SAM2?**
+Using Hugging Face with SAM2 provides multiple advantages:
+- **Quick access to pre-trained SAM2 models** without manually downloading large files.
+- **Automatic version updates** ensure you're using the latest model version.
+- **Reduced local storage needs** by pulling models from the cloud instead of keeping them locally.
+- **Seamless cloud integration** for machine learning workflows in research and production environments.
+- **Easier collaboration**, allowing multiple users to access the same models from a centralized repository.
 
-If you prefer a **quick setup** without downloading and managing model files manually, loading SAM2 from Hugging Face is a great choice. Before using this method, make sure you have the required library installed:
+#### **When Should You Use Hugging Face?**
+- If you **want to start quickly** without downloading models manually.
+- If you **work in a cloud or remote environment** where local storage is limited.
+- If you **frequently switch between different SAM2 versions** and want an easy way to manage them.
+- If you **collaborate with others** and need a centralized model repository.
+
+---
+
+### Installing Required Dependencies
+Before using Hugging Face, ensure you have the necessary dependencies installed:
 
 ```bash
-pip install huggingface_hub
+pip install huggingface_hub torch torchvision
 ```
 
 Alternatively, models can also be loaded from [Hugging Face](https://huggingface.co/models?search=facebook/sam2) (requires `pip install huggingface_hub`).
@@ -170,6 +182,29 @@ with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
     for frame_idx, object_ids, masks in predictor.propagate_in_video(state):
         ...
 ```
+
+####Best Practices for Using Hugging Face with SAM2
+Use a virtual environment to avoid dependency conflicts:
+
+```bash
+python -m venv sam2_env
+source sam2_env/bin/activate  # On Windows: sam2_env\Scripts\activate
+pip install torch torchvision huggingface_hub
+```
+
+Cache models locally to avoid re-downloading them:
+```python
+from huggingface_hub import snapshot_download
+snapshot_download(repo_id="facebook/sam2-hiera-large")
+```
+
+Specify a model revision to ensure version consistency:
+```python
+predictor = SAM2ImagePredictor.from_pretrained("facebook/sam2-hiera-large", revision="main")
+```
+This ensures that your code runs on a stable model version and won’t break due to future updates.
+
+
 
 ## Model Description
 
