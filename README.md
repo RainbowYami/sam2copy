@@ -123,6 +123,20 @@ Please refer to the examples in [video_predictor_example.ipynb](./notebooks/vide
 
 ## Load from 🤗 Hugging Face
 
+### What is Hugging Face and Why Use It?
+[Hugging Face](https://huggingface.co/) is a widely used platform for sharing and distributing machine learning models, datasets, and tools. It provides an easy-to-use interface for downloading and managing pre-trained models, making it convenient for users who want quick access to AI models without manually handling large files.
+
+Using Hugging Face with SAM2 allows you to:
+- **Easily load pre-trained models** without downloading or storing them locally.
+- **Ensure you're using the latest version** of the model without manually updating checkpoints.
+- **Seamlessly integrate with cloud environments**, reducing setup complexity.
+
+If you prefer a **quick setup** without downloading and managing model files manually, loading SAM2 from Hugging Face is a great choice. Before using this method, make sure you have the required library installed:
+
+```bash
+pip install huggingface_hub
+```
+
 Alternatively, models can also be loaded from [Hugging Face](https://huggingface.co/models?search=facebook/sam2) (requires `pip install huggingface_hub`).
 
 For image prediction:
