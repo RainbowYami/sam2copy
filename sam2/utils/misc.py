@@ -219,6 +219,9 @@ def load_video_frames_from_jpg_images(
     async_loading_frames=False,
     compute_device=torch.device("cuda"),
 ):
+    """
+    Alias for `load_video_frames_from_images()` for backward compatibility.
+    """
     return load_video_frames_from_images(
         video_path,
         image_size,
