@@ -262,7 +262,7 @@ def load_video_frames_from_images(
             "ffmpeg to start the JPEG file from 00000.jpg."
         )
     
-    supported_formats = set([".jpg", ".jpeg", ".png", "bmp"])
+    supported_formats = set([".jpg", ".jpeg", ".png", ".bmp"])
     frame_names = [
         p
         for p in os.listdir(img_folder)
