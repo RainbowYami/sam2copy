@@ -8,9 +8,9 @@ import os
 import warnings
 from threading import Thread
 
-import numpy as np
 import torch
 from PIL import Image
+from torchvision import transforms
 from tqdm import tqdm
 
 
@@ -89,16 +89,22 @@ def mask_to_box(masks: torch.Tensor):
     return bbox_coords
 
 
-def _load_img_as_tensor(img_path, image_size):
+def _load_img_as_tensor(img_path, image_size, compute_device=torch.device("cuda")):
     img_pil = Image.open(img_path)
-    img_np = np.array(img_pil.convert("RGB").resize((image_size, image_size)))
-    if img_np.dtype == np.uint8:  # np.uint8 is expected for JPEG images
-        img_np = img_np / 255.0
-    else:
-        raise RuntimeError(f"Unknown image dtype: {img_np.dtype} on {img_path}")
-    img = torch.from_numpy(img_np).permute(2, 0, 1)
     video_width, video_height = img_pil.size  # the original video size
-    return img, video_height, video_width
+    transform = transforms.Compose(
+        [
+            transforms.PILToTensor(),
+            transforms.Lambda(lambda x: x.to(compute_device)),
+            transforms.Resize((image_size, image_size), antialias=True),
+        ]
+    )
+    img_tensor = transform(img_pil)
+    if img_tensor.dtype == torch.uint8:  # np.uint8 is expected for JPEG images
+        img_tensor = img_tensor / 255.0
+    else:
+        raise RuntimeError(f"Unknown image dtype: {img_tensor.dtype} on {img_path}")
+    return img_tensor, video_height, video_width
 
 
 class AsyncVideoFrameLoader:
@@ -153,7 +159,7 @@ class AsyncVideoFrameLoader:
             return img
 
         img, video_height, video_width = _load_img_as_tensor(
-            self.img_paths[index], self.image_size
+            self.img_paths[index], self.image_size, self.compute_device
         )
         self.video_height = video_height
         self.video_width = video_width
@@ -266,7 +272,9 @@ def load_video_frames_from_jpg_images(
 
     images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float32)
     for n, img_path in enumerate(tqdm(img_paths, desc="frame loading (JPEG)")):
-        images[n], video_height, video_width = _load_img_as_tensor(img_path, image_size)
+        images[n], video_height, video_width = _load_img_as_tensor(
+            img_path, image_size, compute_device
+        )
     if not offload_video_to_cpu:
         images = images.to(compute_device)
         img_mean = img_mean.to(compute_device)
