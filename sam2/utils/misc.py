@@ -89,13 +89,13 @@ def mask_to_box(masks: torch.Tensor):
     return bbox_coords
 
 
-def _load_img_as_tensor(img_path, image_size, device="cuda"):
+def _load_img_as_tensor(img_path, image_size, compute_device=torch.device("cuda")):
     img_pil = Image.open(img_path)
     video_width, video_height = img_pil.size  # the original video size
     transform = transforms.Compose(
         [
             transforms.PILToTensor(),
-            transforms.Lambda(lambda x: x.to(device)),
+            transforms.Lambda(lambda x: x.to(compute_device)),
             transforms.Resize((image_size, image_size), antialias=True),
         ]
     )
